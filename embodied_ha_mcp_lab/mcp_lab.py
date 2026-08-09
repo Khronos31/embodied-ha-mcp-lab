@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 import re
+import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ BUILD_IDENTITY_PATH = Path(
 ).resolve()
 LAB_IMAGE = "ghcr.io/khronos31/embodied-ha-mcp-lab"
 MAX_REQUEST_BYTES = 1024 * 1024
+WEB_DIR = LAB_DIR / "web"
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -107,12 +109,65 @@ class LabHandler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _send_bytes(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        *,
+        content_security_policy: str | None = None,
+    ) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if content_security_policy:
+            self.send_header("Content-Security-Policy", content_security_policy)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _serve_index(self) -> None:
+        try:
+            html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            self._send_json(500, {"error": "frontend_unavailable"})
+            return
+        ingress_path = self.headers.get("X-Ingress-Path", "")
+        encoded_path = json.dumps(ingress_path, ensure_ascii=False).replace("<", "\\u003c")
+        nonce = secrets.token_urlsafe(24)
+        injection = f'<script nonce="{nonce}">window.INGRESS_PATH={encoded_path};</script>'
+        html = html.replace("</head>", injection + "\n</head>", 1)
+        policy = (
+            "default-src 'none'; "
+            f"script-src 'self' 'nonce-{nonce}'; "
+            "style-src 'self'; connect-src 'self'; frame-ancestors 'self'; "
+            "base-uri 'none'; form-action 'none'"
+        )
+        self._send_bytes(
+            200,
+            html.encode("utf-8"),
+            "text/html; charset=utf-8",
+            content_security_policy=policy,
+        )
+
+    def _serve_asset(self, filename: str, content_type: str) -> None:
+        try:
+            body = (WEB_DIR / filename).read_bytes()
+        except OSError:
+            self._send_json(404, {"error": "not_found"})
+            return
+        self._send_bytes(200, body, content_type)
+
     def _route_path(self) -> tuple[str, dict[str, list[str]]]:
         split = urlsplit(self.path)
         path = split.path
         ingress_path = self.headers.get("X-Ingress-Path", "").rstrip("/")
-        if ingress_path and path.startswith(ingress_path + "/"):
+        if ingress_path and (path == ingress_path or path.startswith(ingress_path + "/")):
             path = path[len(ingress_path) :]
+        path = path or "/"
         return path, parse_qs(split.query)
 
     def _actor(self) -> Actor | None:
@@ -135,7 +190,13 @@ class LabHandler(BaseHTTPRequestHandler):
         if actor is None:
             return
         try:
-            if path in {"/", "/api/identity"}:
+            if path == "/":
+                self._serve_index()
+            elif path == "/app.js":
+                self._serve_asset("app.js", "text/javascript; charset=utf-8")
+            elif path == "/style.css":
+                self._serve_asset("style.css", "text/css; charset=utf-8")
+            elif path == "/api/identity":
                 self._send_json(200, self.server.identity)
             elif path == "/api/servers":
                 self._send_json(200, {"servers": self.server.service.servers()})

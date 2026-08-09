@@ -1,0 +1,1 @@
+{"rooms":{"study":{"display_name":"Study"},"living_room":{"display_name":"Living room"}},"edges":[{"from":"study","to":"living_room","cost":1}]}

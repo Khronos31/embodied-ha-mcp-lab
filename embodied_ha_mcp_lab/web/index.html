@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embodied HA MCP Lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-title-group">
+        <h1>Embodied HA MCP Lab</h1>
+        <span class="header-subtitle">MCP Tool Testbench</span>
+      </div>
+      <div class="header-actions">
+        <button id="reset-state-btn" class="btn btn-danger" type="button">ラボ状態をリセット</button>
+      </div>
+    </header>
+
+    <!-- Compact State Summary -->
+    <section class="card state-summary-section" aria-label="Lab State Summary">
+      <h2 class="section-title">ラボ状態サマリー (State Summary)</h2>
+      <div id="state-summary-grid" class="summary-grid" role="status" aria-live="polite">
+        <!-- Filled dynamically with textContent -->
+      </div>
+    </section>
+
+    <!-- Security Warning Banner -->
+    <div class="alert alert-warning" role="alert">
+      <strong>【セキュリティ注意】</strong> 入力されたリクエストボディおよび実行結果の生の出力はすべてログ・履歴に保持されます。APIキー、パスワード、秘密鍵などの機密情報を貼り付けないでください。
+    </div>
+
+    <!-- Notification / Status Banner -->
+    <div id="status-message" class="status-message hidden" role="status" aria-live="polite"></div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Selector Panel -->
+      <section class="card control-panel">
+        <h2 class="section-title">ターゲット選択 (Target Selection)</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="server-select">サーバー (Server):</label>
+            <select id="server-select" aria-label="Server selection">
+              <option value="">-- サーバーを選択してください --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="tool-select">ツール (Tool):</label>
+            <select id="tool-select" aria-label="Tool selection">
+              <option value="">-- ツールを選択してください --</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tool Details Section -->
+      <section id="tool-details-section" class="card tool-details-section hidden">
+        <h2 class="section-title">ツール情報 (Tool Details)</h2>
+        
+        <div id="side-effect-warning" class="alert alert-info hidden" role="region" aria-label="Side effect warning"></div>
+
+        <div class="detail-block">
+          <h3>説明 (Description)</h3>
+          <p id="tool-description-text" class="description-text"></p>
+        </div>
+
+        <div class="detail-block">
+          <h3>入力スキーマ (inputSchema)</h3>
+          <pre id="tool-schema-display" class="code-block"></pre>
+        </div>
+      </section>
+
+      <!-- Payload Textarea & Send -->
+      <section class="card editor-section">
+        <h2 class="section-title">リクエスト送信 (Payload Editor)</h2>
+        <div class="form-group">
+          <label for="tool-input">リクエストボディ (Raw Payload Text):</label>
+          <textarea id="tool-input" spellcheck="false" placeholder="{}"></textarea>
+        </div>
+        <div class="action-bar">
+          <button id="send-tool-btn" class="btn btn-primary" type="button">送信 (Send Tool Call)</button>
+        </div>
+      </section>
+
+      <!-- Execution Results Section -->
+      <section class="card result-section">
+        <h2 class="section-title">実行結果 (Result &amp; Evidence Envelope)</h2>
+        
+        <div id="result-meta-grid" class="result-grid hidden">
+          <div class="result-item">
+            <span class="meta-label">Exit Code:</span>
+            <span id="res-exit-code" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Signal:</span>
+            <span id="res-signal" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Timed Out:</span>
+            <span id="res-timed-out" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Elapsed (ms):</span>
+            <span id="res-elapsed-ms" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Response ID:</span>
+            <span id="res-response-id" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Input Class:</span>
+            <span id="res-input-class" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Input Line Breaks:</span>
+            <span id="res-line-breaks" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Request Layer:</span>
+            <span id="res-request-layer" class="meta-value"></span>
+          </div>
+          <div class="result-item">
+            <span class="meta-label">Truncated:</span>
+            <span id="res-truncated" class="meta-value"></span>
+          </div>
+        </div>
+
+        <div class="result-block">
+          <h3>標準出力 (stdout_raw)</h3>
+          <pre id="res-stdout-raw" class="code-block"></pre>
+        </div>
+
+        <div class="result-block">
+          <h3>標準エラー出力 (stderr_raw)</h3>
+          <pre id="res-stderr-raw" class="code-block"></pre>
+        </div>
+
+        <div class="result-block">
+          <h3>状態変更 / コミット (State Commits &amp; Changes)</h3>
+          <pre id="res-state-changes" class="code-block"></pre>
+        </div>
+
+        <div class="result-block">
+          <h3>完全なJSONレスポンス (Full Envelope)</h3>
+          <pre id="res-full-envelope" class="code-block"></pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

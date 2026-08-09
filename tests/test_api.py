@@ -69,6 +69,16 @@ def request(server, method, path, body=None, headers=None):
     return response.status, payload
 
 
+def raw_request(server, method, path, headers=None):
+    connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+    connection.request(method, path, headers=headers or {})
+    response = connection.getresponse()
+    body = response.read()
+    response_headers = dict(response.getheaders())
+    connection.close()
+    return response.status, response_headers, body
+
+
 def stop(server, thread):
     server.shutdown()
     server.server_close()
@@ -103,6 +113,42 @@ def test_direct_api_requires_correct_bearer_and_ingress_uses_peer_boundary(tmp_p
         assert request(ingress_server, "GET", "/api/state")[0] == 200
     finally:
         stop(ingress_server, ingress_thread)
+
+
+def test_frontend_is_authenticated_and_injects_ingress_path_safely(tmp_path):
+    server, thread, _, paths = application(tmp_path)
+    token = paths.token.read_text().strip()
+    authorization = {"Authorization": f"Bearer {token}"}
+    try:
+        assert raw_request(server, "GET", "/")[0] == 401
+        status, headers, body = raw_request(
+            server,
+            "GET",
+            "/ingress-token",
+            headers={
+                **authorization,
+                "X-Ingress-Path": "/ingress-token",
+            },
+        )
+        text = body.decode()
+        assert status == 200
+        assert headers["Content-Type"] == "text/html; charset=utf-8"
+        assert "default-src 'none'" in headers["Content-Security-Policy"]
+        assert 'window.INGRESS_PATH="/ingress-token"' in text
+        assert token not in text
+        assert "api_token" not in text
+        for asset, content_type in (
+            ("/app.js", "text/javascript; charset=utf-8"),
+            ("/style.css", "text/css; charset=utf-8"),
+        ):
+            asset_status, asset_headers, asset_body = raw_request(
+                server, "GET", asset, headers=authorization
+            )
+            assert asset_status == 200
+            assert asset_headers["Content-Type"] == content_type
+            assert asset_body
+    finally:
+        stop(server, thread)
 
 
 def test_discovery_call_raw_evidence_runs_and_reset(tmp_path):
