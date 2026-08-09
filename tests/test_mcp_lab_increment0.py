@@ -269,6 +269,7 @@ def test_main_workflow_builds_and_canaries_both_exact_candidate_architectures():
     assert "platforms: linux/amd64,linux/arm64" in workflow_text
     assert "candidate-${{ github.sha }}" in workflow_text
     assert "runtime_matches_build" in workflow_text
+    assert 'entry["name"] for entry in server_entries' in workflow_text
     assert "assert len(servers) == 13" in workflow_text
     assert "linux/amd64" in workflow_text
     assert "linux/arm64" in workflow_text

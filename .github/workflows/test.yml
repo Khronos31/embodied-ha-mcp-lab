@@ -197,7 +197,8 @@ jobs:
 
           identity = get("/api/identity")
           assert identity["runtime_matches_build"] is True
-          servers = get("/api/servers")["servers"]
+          server_entries = get("/api/servers")["servers"]
+          servers = [entry["name"] for entry in server_entries]
           assert len(servers) == 13, servers
           observed = {}
           for server in servers:
