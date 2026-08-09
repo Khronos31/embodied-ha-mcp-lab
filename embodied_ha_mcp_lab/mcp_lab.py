@@ -371,7 +371,7 @@ def build_application(options_path: Path | None = None) -> tuple[MCPService, Aut
         for item in os.environ.get("EHA_MCP_LAB_INGRESS_SOURCE", "172.30.32.2").split(",")
         if item.strip()
     }
-    token_path = Path(os.environ.get("EHA_MCP_LAB_TOKEN_PATH", str(paths.token)))
+    token_path = Path(os.environ.get("EHA_MCP_LAB_AUTH_FILE", str(paths.token)))
     authenticator = Authenticator(token_path, sources)
     service = MCPService(
         runtime,
