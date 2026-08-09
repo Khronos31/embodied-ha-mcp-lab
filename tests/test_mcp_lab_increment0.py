@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import re
 import subprocess
@@ -10,6 +9,8 @@ from urllib.request import urlopen
 
 import yaml
 
+from embodied_ha_mcp_lab.auth import Authenticator
+
 ROOT = Path(__file__).resolve().parents[1]
 LAB_DIR = ROOT / "embodied_ha_mcp_lab"
 CONTRACT = ROOT / "tested_eha.json"
@@ -18,17 +19,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "publish-mcp-lab-image.yml"
 LAB_DOCKERFILE = ROOT / ".github" / "docker" / "mcp-lab.Dockerfile"
 
 
-def _load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-source_identity = _load_module("source_identity", LAB_DIR / "source_identity.py")
-mcp_lab = _load_module("mcp_lab_increment0", LAB_DIR / "mcp_lab.py")
+from embodied_ha_mcp_lab import mcp_lab, source_identity
 
 
 def test_lab_manifest_uses_an_independent_minimal_release():
@@ -307,16 +298,17 @@ def test_public_identity_does_not_trust_a_malformed_build_manifest(tmp_path):
     assert identity["tested_eha_version"] == "9.9.9"
 
 
-def test_identity_http_endpoints_return_json_without_execution():
-    identity = {"lab_mode": "identity_only", "build_id": "sha256:test"}
-    server = mcp_lab.create_server("127.0.0.1", 0, identity)
+def test_health_and_authenticated_identity_endpoints(tmp_path):
+    identity = {"lab_mode": "mcp_lab", "build_id": "sha256:test"}
+    authenticator = Authenticator(tmp_path / "token", {"127.0.0.1"})
+    server = mcp_lab.create_server("127.0.0.1", 0, None, authenticator, identity)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base_url = f"http://127.0.0.1:{server.server_port}"
     try:
         with urlopen(f"{base_url}/healthz", timeout=2) as response:
             assert response.status == 200
-            assert json.load(response) == {"mode": "identity_only", "ok": True}
+            assert json.load(response) == {"mode": "mcp_lab", "ok": True}
         with urlopen(f"{base_url}/api/identity", timeout=2) as response:
             assert response.status == 200
             assert json.load(response) == identity
@@ -326,7 +318,7 @@ def test_identity_http_endpoints_return_json_without_execution():
             assert error.code == 404
             assert json.load(error) == {"error": "not_found"}
         else:
-            raise AssertionError("Increment 0 must not expose an MCP call endpoint")
+            raise AssertionError("unknown route must remain closed")
     finally:
         server.shutdown()
         server.server_close()
