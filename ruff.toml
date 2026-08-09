@@ -1,0 +1,7 @@
+# embodied-ha-mcp-lab の ruff 設定。
+# pyflakes(F) によるバグ検出（未定義名・未使用import/変数など）を主目的にする。
+# このプロジェクトが意図的に使っている簡潔な書き方は無効化し、ノイズを抑える。
+lint.ignore = [
+    "E401",  # 1行に複数import（import json, sys, os）— 全.py/heredocで一貫して使う作法
+    "E701",  # コロン後の1行文（if not line: continue）— 全体で常用
+]

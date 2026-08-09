@@ -1,0 +1,11 @@
+*
+!.github/
+!.github/docker/
+!.github/docker/mcp-lab.Dockerfile
+!embodied_ha_mcp_lab/
+!embodied_ha_mcp_lab/mcp_lab.py
+!embodied_ha_mcp_lab/source_identity.py
+!.upstream/
+!.upstream/embodied-ha-repo/
+!.upstream/embodied-ha-repo/embodied_ha/
+!.upstream/embodied-ha-repo/embodied_ha/**
