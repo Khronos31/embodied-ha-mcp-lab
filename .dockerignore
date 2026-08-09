@@ -3,8 +3,9 @@
 !.github/docker/
 !.github/docker/mcp-lab.Dockerfile
 !embodied_ha_mcp_lab/
-!embodied_ha_mcp_lab/mcp_lab.py
-!embodied_ha_mcp_lab/source_identity.py
+!embodied_ha_mcp_lab/**
+embodied_ha_mcp_lab/**/__pycache__/
+embodied_ha_mcp_lab/**/*.pyc
 !.upstream/
 !.upstream/embodied-ha-repo/
 !.upstream/embodied-ha-repo/embodied_ha/

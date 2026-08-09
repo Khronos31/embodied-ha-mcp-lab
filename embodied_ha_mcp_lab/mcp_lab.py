@@ -337,12 +337,21 @@ def _options(path: Path) -> dict[str, Any]:
 
 def build_application(options_path: Path | None = None) -> tuple[MCPService, Authenticator, dict[str, Any]]:
     options = _options(options_path or Path("/data/options.json"))
-    paths = LabPaths.below(Path(os.environ.get("EHA_MCP_LAB_CONTROL_ROOT", "/config/embodied-ha-mcp-lab")))
+    paths = LabPaths.below(
+        Path(
+            os.environ.get(
+                "EHA_MCP_LAB_CONTROL_ROOT",
+                "/data/embodied-ha-mcp-lab",
+            )
+        )
+    )
     runtime = LabRuntime(
         APP_DIR,
         paths,
         tested_harness=str(options.get("tested_harness", "claude")),
-        seed_data_dir=Path(str(options.get("seed_data_dir", "/config/embodied-ha"))),
+        seed_data_dir=Path(
+            str(options.get("seed_data_dir", "/config"))
+        ),
     )
     seeded = runtime.initialize()
     state = StateRepository(paths.worktree, paths.repository, paths.hooks)
@@ -362,7 +371,8 @@ def build_application(options_path: Path | None = None) -> tuple[MCPService, Aut
         for item in os.environ.get("EHA_MCP_LAB_INGRESS_SOURCE", "172.30.32.2").split(",")
         if item.strip()
     }
-    authenticator = Authenticator(paths.token, sources)
+    token_path = Path(os.environ.get("EHA_MCP_LAB_TOKEN_PATH", str(paths.token)))
+    authenticator = Authenticator(token_path, sources)
     service = MCPService(
         runtime,
         state,

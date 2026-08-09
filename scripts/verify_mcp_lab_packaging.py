@@ -70,11 +70,23 @@ def verify_packaging(
         raise ValueError(
             "Lab add-on folder must not contain a second MCP source bundle"
         )
-    for required in ("mcp_lab.py", "source_identity.py"):
+    for required in (
+        "mcp_lab.py",
+        "source_identity.py",
+        "runner.py",
+        "runtime.py",
+        "state_repository.py",
+        "web/index.html",
+        "web/app.js",
+        "web/style.css",
+    ):
         if not (lab_dir / required).is_file():
             raise ValueError(f"missing Lab implementation file: {required}")
     if not (root / ".github" / "docker" / "mcp-lab.Dockerfile").is_file():
         raise ValueError("missing CI-only Lab Dockerfile")
+    dockerignore = (root / ".dockerignore").read_text(encoding="utf-8")
+    if "!embodied_ha_mcp_lab/**" not in dockerignore:
+        raise ValueError("Docker context does not include the complete Lab package")
     if (root / "embodied_ha").exists():
         raise ValueError("EHA source must not be committed inside the Lab repository")
 

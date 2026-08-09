@@ -16,13 +16,14 @@ LAB_DIR = ROOT / "embodied_ha_mcp_lab"
 CONTRACT = ROOT / "tested_eha.json"
 PACKAGING_VERIFIER = ROOT / "scripts" / "verify_mcp_lab_packaging.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "publish-mcp-lab-image.yml"
+TEST_WORKFLOW = ROOT / ".github" / "workflows" / "test.yml"
 LAB_DOCKERFILE = ROOT / ".github" / "docker" / "mcp-lab.Dockerfile"
 
 
 from embodied_ha_mcp_lab import mcp_lab, source_identity
 
 
-def test_lab_manifest_uses_an_independent_minimal_release():
+def test_lab_manifest_uses_an_independent_runtime_release():
     lab = yaml.safe_load((LAB_DIR / "config.yaml").read_text(encoding="utf-8"))
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
 
@@ -36,11 +37,16 @@ def test_lab_manifest_uses_an_independent_minimal_release():
     assert lab["image"] == "ghcr.io/khronos31/embodied-ha-mcp-lab"
     assert "environment" not in lab
     assert lab["ingress_port"] == 8099
-    assert "map" not in lab
-    assert "audio" not in lab
+    assert lab["map"] == [{"type": "addon_config", "read_only": False}]
+    assert lab["audio"] is True
     assert "hassio_api" not in lab
-    assert "homeassistant_api" not in lab
-    assert "services" not in lab
+    assert lab["homeassistant_api"] is True
+    assert lab["services"] == ["mqtt:want"]
+    assert lab["options"] == {
+        "tested_harness": "claude",
+        "timeout_seconds": 45,
+        "seed_data_dir": "/config",
+    }
     assert not (LAB_DIR / "Dockerfile").exists()
     assert not list(LAB_DIR.glob("*-mcp.py"))
 
@@ -59,7 +65,29 @@ def test_dockerfile_bakes_source_identity_after_copy():
     ) < dockerfile.index("source_identity.py write")
     assert "--lab-version" in dockerfile
     assert "--tested-eha-version" in dockerfile
-    assert 'CMD ["python3", "/lab/mcp_lab.py"]' in dockerfile
+    assert "apt-get install" in dockerfile
+    assert "python:3.11-slim-bookworm@sha256:" in dockerfile
+    assert 'io.hass.type="app"' in dockerfile
+    assert "COPY embodied_ha_mcp_lab/ /lab/embodied_ha_mcp_lab/" in dockerfile
+    assert 'CMD ["python3", "-m", "embodied_ha_mcp_lab.mcp_lab"]' in dockerfile
+
+
+def test_docker_context_includes_the_complete_lab_package():
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+    assert "!embodied_ha_mcp_lab/**" in dockerignore
+    for required in (
+        "auth.py",
+        "execution_queue.py",
+        "ledger.py",
+        "runner.py",
+        "runtime.py",
+        "service.py",
+        "state_repository.py",
+        "web/index.html",
+        "web/app.js",
+        "web/style.css",
+    ):
+        assert (LAB_DIR / required).is_file()
 
 
 def test_identity_is_stable_and_detects_source_changes(tmp_path):
@@ -221,37 +249,34 @@ def test_publish_workflow_is_manual_tag_gated_and_commit_pinned():
     assert 'test "$RELEASE_REF_TYPE" = "tag"' in workflow_text
     assert "--release-ref" in workflow_text
     assert "mcp-lab-v<version>" in workflow_text
-    assert "context: ." in workflow_text
-    assert "file: ./.github/docker/mcp-lab.Dockerfile" in workflow_text
-    assert (
-        "repository: ${{ steps.packaging.outputs.tested_eha_repository }}"
-        in workflow_text
-    )
-    assert "ref: ${{ steps.packaging.outputs.tested_eha_revision }}" in workflow_text
-    assert "persist-credentials: false" in workflow_text
-    assert (
-        "org.opencontainers.image.source=https://github.com/Khronos31/embodied-ha-mcp-lab"
-        in workflow_text
-    )
-    assert "platforms: linux/amd64,linux/arm64" in workflow_text
-    assert (
-        "ghcr.io/khronos31/embodied-ha-mcp-lab:${{ steps.packaging.outputs.lab_version }}"
-        in workflow_text
-    )
-    assert (
-        "TESTED_EHA_VERSION=${{ steps.packaging.outputs.tested_eha_version }}"
-        in workflow_text
-    )
-    assert (
-        "EHA_SOURCE_REVISION=${{ steps.packaging.outputs.tested_eha_revision }}"
-        in workflow_text
-    )
+    assert "candidate-${{ github.sha }}" in workflow_text
+    assert "imagetools create --tag" in workflow_text
+    assert "Release tag already exists and is immutable" in workflow_text
+    assert "build-push-action" not in workflow_text
     assert ":latest" not in workflow_text
 
     action_refs = re.findall(
         r"^\s*uses:\s*[^@\s]+@([^\s#]+)", workflow_text, re.MULTILINE
     )
-    assert len(action_refs) == 6
+    assert len(action_refs) == 3
+    assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs)
+
+
+def test_main_workflow_builds_and_canaries_both_exact_candidate_architectures():
+    workflow_text = TEST_WORKFLOW.read_text(encoding="utf-8")
+    workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
+    assert set(workflow["on"]) == {"push", "pull_request"}
+    assert "platforms: linux/amd64,linux/arm64" in workflow_text
+    assert "candidate-${{ github.sha }}" in workflow_text
+    assert "runtime_matches_build" in workflow_text
+    assert "assert len(servers) == 13" in workflow_text
+    assert "linux/amd64" in workflow_text
+    assert "linux/arm64" in workflow_text
+    assert "docker exec -i" in workflow_text
+    action_refs = re.findall(
+        r"^\s*uses:\s*[^@\s]+@([^\s#]+)", workflow_text, re.MULTILINE
+    )
+    assert action_refs
     assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs)
 
 

@@ -1,9 +1,13 @@
-name: Test
+name: Test and canary candidate
 
 on:
   push:
     branches: [main]
   pull_request:
+
+concurrency:
+  group: mcp-lab-test-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -42,3 +46,170 @@ jobs:
           pytest -q
           python3 scripts/verify_mcp_lab_packaging.py \
             --upstream-root .upstream/embodied-ha-repo/embodied_ha
+
+  candidate:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out MCP Lab
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Read pinned EHA source identity
+        id: packaging
+        run: python3 scripts/verify_mcp_lab_packaging.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Check out pinned EHA source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ${{ steps.packaging.outputs.tested_eha_repository }}
+          ref: ${{ steps.packaging.outputs.tested_eha_revision }}
+          path: .upstream/embodied-ha-repo
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether this commit candidate already exists
+        id: existing
+        env:
+          IMAGE: ghcr.io/khronos31/embodied-ha-mcp-lab:candidate-${{ github.sha }}
+        run: |
+          if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build immutable multi-architecture candidate
+        if: steps.existing.outputs.exists != 'true'
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./.github/docker/mcp-lab.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/khronos31/embodied-ha-mcp-lab:candidate-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/Khronos31/embodied-ha-mcp-lab
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.packaging.outputs.lab_version }}
+          build-args: |
+            LAB_VERSION=${{ steps.packaging.outputs.lab_version }}
+            TESTED_EHA_VERSION=${{ steps.packaging.outputs.tested_eha_version }}
+            EHA_SOURCE_REPOSITORY=${{ steps.packaging.outputs.tested_eha_repository }}
+            EHA_SOURCE_REVISION=${{ steps.packaging.outputs.tested_eha_revision }}
+          provenance: mode=max
+
+      - name: Record candidate digest
+        env:
+          IMAGE: ghcr.io/khronos31/embodied-ha-mcp-lab:candidate-${{ github.sha }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Manifest.Digest}}')
+          test -n "$digest"
+          echo "Candidate digest $digest" >> "$GITHUB_STEP_SUMMARY"
+
+  canary:
+    if: github.event_name == 'push'
+    needs: candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            suffix: amd64
+          - platform: linux/arm64
+            suffix: arm64
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start exact candidate on ${{ matrix.platform }}
+        env:
+          IMAGE: ghcr.io/khronos31/embodied-ha-mcp-lab:candidate-${{ github.sha }}
+          PLATFORM: ${{ matrix.platform }}
+          CONTAINER: mcp-lab-canary-${{ matrix.suffix }}
+        run: |
+          docker pull --platform "$PLATFORM" "$IMAGE"
+          docker run --detach --name "$CONTAINER" --platform "$PLATFORM" "$IMAGE"
+
+      - name: Verify startup, identity, and every live tools/list
+        env:
+          CONTAINER: mcp-lab-canary-${{ matrix.suffix }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if docker exec "$CONTAINER" python3 -c \
+              'from urllib.request import urlopen; assert urlopen("http://127.0.0.1:8099/healthz").status == 200' 2>/dev/null; then
+              break
+            fi
+            if ! docker inspect --format '{{.State.Running}}' "$CONTAINER" | grep -qx true; then
+              docker logs "$CONTAINER"
+              exit 1
+            fi
+            if [ "$attempt" = 60 ]; then
+              docker logs "$CONTAINER"
+              exit 1
+            fi
+            sleep 1
+          done
+          docker exec -i "$CONTAINER" python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+
+          token_path = Path("/config/eha-mcp-lab-token.config.toml")
+          token = token_path.read_text().strip()
+
+          def get(path):
+              request = Request(
+                  f"http://127.0.0.1:8099{path}",
+                  headers={"Authorization": f"Bearer {token}"},
+              )
+              with urlopen(request, timeout=90) as response:
+                  assert response.status == 200
+                  return json.load(response)
+
+          identity = get("/api/identity")
+          assert identity["runtime_matches_build"] is True
+          servers = get("/api/servers")["servers"]
+          assert len(servers) == 13, servers
+          observed = {}
+          for server in servers:
+              tools = get(f"/api/servers/{server}/tools")["tools"]
+              assert tools, server
+              observed[server] = len(tools)
+          print(json.dumps({"servers": observed}, sort_keys=True))
+          PY
+
+      - name: Show logs and remove canary
+        if: always()
+        env:
+          CONTAINER: mcp-lab-canary-${{ matrix.suffix }}
+        run: |
+          docker logs "$CONTAINER" || true
+          docker rm --force "$CONTAINER" || true

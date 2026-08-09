@@ -98,3 +98,50 @@ def test_real_body_server_persists_across_fresh_children_and_commits(tmp_path):
     location_commit = state.commit_run("location")
     assert location_commit.before == move_commit.after
     assert location_commit.after == move_commit.after
+
+
+def test_every_real_server_live_tool_list_matches_the_pinned_registry(tmp_path):
+    paths = LabPaths.below(tmp_path / "lab")
+    runtime = LabRuntime(
+        SOURCE,
+        paths,
+        inherited_env={"PATH": os.environ["PATH"], "SUPERVISOR_TOKEN": "sentinel"},
+    )
+    runtime.initialize()
+    observed = {}
+    for server_name in runtime.servers():
+        command = runtime.server(server_name)
+        tools, result = MCPRunner(
+            command.command,
+            env=command.env,
+            cwd=SOURCE,
+            timeout_seconds=3,
+        ).discover_tools()
+        assert result.response_id_observed, (server_name, result.stderr_raw)
+        observed[server_name] = {tool["name"] for tool in tools}
+        assert observed[server_name] == set(command.registry_tools)
+        assert "sentinel" not in result.stdout_raw
+        assert "sentinel" not in result.stderr_raw
+    assert observed.keys() == set(runtime.servers())
+
+
+def test_real_files_server_cannot_read_the_lab_direct_api_token(tmp_path):
+    paths = LabPaths.below(tmp_path / "lab")
+    runtime = LabRuntime(
+        SOURCE,
+        paths,
+        inherited_env={"PATH": os.environ["PATH"]},
+    )
+    runtime.initialize()
+    token = tmp_path / "eha-mcp-lab-token.config.toml"
+    token.write_text("private-token-sentinel", encoding="utf-8")
+    command = runtime.server("files")
+    result = MCPRunner(
+        command.command,
+        env=command.env,
+        cwd=SOURCE,
+        timeout_seconds=3,
+    ).call("read_file", json.dumps({"path": str(token)}).encode())
+    assert result.response_id_observed is True
+    assert "private-token-sentinel" not in result.stdout_raw
+    assert "一時的なエージェント設定は読めません" in result.stdout_raw

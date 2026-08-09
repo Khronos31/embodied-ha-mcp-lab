@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONTROL_ROOT = Path("/config/embodied-ha-mcp-lab")
-DEFAULT_SEED_DIR = Path("/config/embodied-ha")
+DEFAULT_CONTROL_ROOT = Path("/data/embodied-ha-mcp-lab")
+DEFAULT_SEED_DIR = Path("/config")
 SEED_FILES = ("preferences.json", "floorplan_room_graph_draft.json")
 SUPPORTED_HARNESSES = {"claude", "codex", "agy"}
 
@@ -148,7 +148,12 @@ class LabRuntime:
         if name not in specifications:
             raise KeyError("unknown MCP server")
         spec = specifications[name]
-        built = spec.build()
+        # Some pinned specs (camera) resolve required values when build() runs,
+        # not when mcp-config.py is imported. Keep the same curated environment
+        # for both phases, then restore the backend process environment.
+        with _temporary_environment(self.environment()):
+            built = spec.build()
+            registry_tools = tuple(spec.active_tools())
         command = (str(built["command"]), *map(str, built.get("args", ())))
         if len(command) < 2:
             raise RuntimeError("invalid MCP server command")
@@ -161,7 +166,7 @@ class LabRuntime:
             name=name,
             command=command,
             env=environment,
-            registry_tools=tuple(spec.active_tools()),
+            registry_tools=registry_tools,
         )
 
     def _seed_configuration(self) -> list[str]:

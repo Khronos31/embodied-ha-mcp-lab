@@ -1,31 +1,24 @@
-# Embodied HA MCP Lab
+# Embodied HA MCP Lab app
 
-This folder defines a second Home Assistant app slug. Its Lab-only GHCR image copies
-`embodied_ha/` as read-only tested source, then starts the separate `mcp_lab.py` entrypoint.
-The resident Dockerfile, entrypoint, runtime, and image are not modified.
+This folder is the Home Assistant app descriptor and Python package. Its GHCR image
+contains an immutable, commit-pinned Embodied HA source bundle at `/app`, while the Lab
+backend and UI live at `/lab/embodied_ha_mcp_lab`.
 
-Increment 0 is identity-only. It serves `/healthz` and `/api/identity`; it does not execute
-MCP tools or language-model harnesses yet.
-The add-on remains marked advanced and experimental because it is a development/inspection
-surface rather than a resident-facing feature.
+The image starts only `python3 -m embodied_ha_mcp_lab.mcp_lab`. It does not start EHA's
+`run.sh`, daemon, audio daemon, MQTT discovery, or an LLM harness.
 
-## Packaging contract
+## Configuration
 
-- The Lab add-on folder has no Supervisor Docker build context. A manually dispatched,
-  tag-gated workflow uses the repository root and `.github/docker/mcp-lab.Dockerfile` to
-  publish `ghcr.io/khronos31/embodied-ha-mcp-lab`.
-- Lab has its own release version. The build manifest separately records the EHA version
-  whose source was copied into `/app`.
-- The image bakes `/lab/.eha-source-identity.json` for the copied `/app` EHA source. The
-  identity endpoint reports build-time and runtime hashes, so image drift is visible.
-- The GHCR package must be public before Home Assistant can pull it anonymously. First
-  publication is therefore not a completed release until an unauthenticated pull succeeds.
-- Increment 0 intentionally grants only Ingress. HA API, `/config`, audio, MQTT, and other
-  capabilities are added only with the runner increments that require them.
+- `tested_harness`: `claude`, `codex`, or `agy`; controls harness-dependent MCP exposure
+  only. The Lab itself does not invoke a resident LLM.
+- `timeout_seconds`: total initialize/call timeout, 1–300 seconds (default 45).
+- `seed_data_dir`: first-start source for the two allowlisted configuration files
+  (container path; default `/config`, which is this app's own `addon_config`).
 
-Do not reuse or overwrite an already published version tag.
+The app is administrator-only, advanced, experimental, and boot-manual. Its private
+`/data` volume and its own `addon_config` are writable, but the resident Home Assistant
+configuration is not mounted. HA API, audio, and optional MQTT permissions exist because
+the selected MCP tools must exercise the same real capabilities as EHA. Those external
+permissions are not an isolation boundary.
 
-The first release is Lab `0.1.0`, testing the EHA `2.1.14` commit pinned in the
-repository-root `tested_eha.json`, from tag `mcp-lab-v0.1.0`.
-Updating the tested EHA source does not implicitly change the resident add-on artifact, but
-it requires a new Lab version and image rather than overwriting an existing GHCR tag.
+See the repository-root README for the state, evidence, API, and release contracts.

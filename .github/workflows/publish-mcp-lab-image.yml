@@ -35,25 +35,6 @@ jobs:
             --requested-version "$REQUESTED_VERSION" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Check out the pinned EHA source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          repository: ${{ steps.packaging.outputs.tested_eha_repository }}
-          ref: ${{ steps.packaging.outputs.tested_eha_revision }}
-          path: .upstream/embodied-ha-repo
-          persist-credentials: false
-
-      - name: Verify the pinned EHA checkout
-        env:
-          EXPECTED_REVISION: ${{ steps.packaging.outputs.tested_eha_revision }}
-        run: |
-          test "$(git -C .upstream/embodied-ha-repo rev-parse HEAD)" = "$EXPECTED_REVISION"
-          python3 scripts/verify_mcp_lab_packaging.py \
-            --upstream-root ".upstream/embodied-ha-repo/${{ steps.packaging.outputs.tested_eha_source_subdir }}"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
@@ -64,24 +45,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and publish the Lab image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          file: ./.github/docker/mcp-lab.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/khronos31/embodied-ha-mcp-lab:${{ steps.packaging.outputs.lab_version }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/Khronos31/embodied-ha-mcp-lab
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.packaging.outputs.lab_version }}
-          build-args: |
-            LAB_VERSION=${{ steps.packaging.outputs.lab_version }}
-            TESTED_EHA_VERSION=${{ steps.packaging.outputs.tested_eha_version }}
-            EHA_SOURCE_REPOSITORY=${{ steps.packaging.outputs.tested_eha_repository }}
-            EHA_SOURCE_REVISION=${{ steps.packaging.outputs.tested_eha_revision }}
-          provenance: mode=max
+      - name: Promote the tested candidate exactly once
+        env:
+          CANDIDATE: ghcr.io/khronos31/embodied-ha-mcp-lab:candidate-${{ github.sha }}
+          RELEASE: ghcr.io/khronos31/embodied-ha-mcp-lab:${{ steps.packaging.outputs.lab_version }}
+        run: |
+          docker buildx imagetools inspect "$CANDIDATE" >/dev/null
+          if docker buildx imagetools inspect "$RELEASE" >/dev/null 2>&1; then
+            echo "::error::Release tag already exists and is immutable: $RELEASE"
+            exit 1
+          fi
+          docker buildx imagetools create --tag "$RELEASE" "$CANDIDATE"
+          digest=$(docker buildx imagetools inspect "$RELEASE" --format '{{json .Manifest.Digest}}')
+          test -n "$digest"
+          echo "Release digest $digest" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record the first-publication gate
         run: |
