@@ -341,7 +341,7 @@ def build_application(options_path: Path | None = None) -> tuple[MCPService, Aut
         Path(
             os.environ.get(
                 "EHA_MCP_LAB_CONTROL_ROOT",
-                "/data/embodied-ha-mcp-lab",
+                "/config/embodied-ha-mcp-lab",
             )
         )
     )
@@ -349,9 +349,6 @@ def build_application(options_path: Path | None = None) -> tuple[MCPService, Aut
         APP_DIR,
         paths,
         tested_harness=str(options.get("tested_harness", "claude")),
-        seed_data_dir=Path(
-            str(options.get("seed_data_dir", "/config"))
-        ),
     )
     seeded = runtime.initialize()
     state = StateRepository(paths.worktree, paths.repository, paths.hooks)

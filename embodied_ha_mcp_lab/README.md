@@ -12,13 +12,11 @@ The image starts only `python3 -m embodied_ha_mcp_lab.mcp_lab`. It does not star
 - `tested_harness`: `claude`, `codex`, or `agy`; controls harness-dependent MCP exposure
   only. The Lab itself does not invoke a resident LLM.
 - `timeout_seconds`: total initialize/call timeout, 1–300 seconds (default 45).
-- `seed_data_dir`: first-start source for the two allowlisted configuration files
-  (container path; default `/config`, which is this app's own `addon_config`).
 
-The app is administrator-only, advanced, experimental, and boot-manual. Its private
-`/data` volume and its own `addon_config` are writable, but the resident Home Assistant
-configuration is not mounted. HA API, audio, and optional MQTT permissions exist because
-the selected MCP tools must exercise the same real capabilities as EHA. Those external
-permissions are not an isolation boundary.
+The app is administrator-only, advanced, experimental, and boot-manual. It mounts Home
+Assistant's configuration at `/config`, matching Embodied HA, and confines its own
+mutable paths to `/config/embodied-ha-mcp-lab`. HA API, audio, and optional MQTT
+permissions exist because the selected MCP tools must exercise the same real
+capabilities as EHA. Those external permissions are not an isolation boundary.
 
 See the repository-root README for the state, evidence, API, and release contracts.

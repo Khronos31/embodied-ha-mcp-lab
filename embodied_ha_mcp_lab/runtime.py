@@ -14,8 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONTROL_ROOT = Path("/data/embodied-ha-mcp-lab")
-DEFAULT_SEED_DIR = Path("/config")
+DEFAULT_CONTROL_ROOT = Path("/config/embodied-ha-mcp-lab")
 SEED_FILES = ("preferences.json", "floorplan_room_graph_draft.json")
 SUPPORTED_HARNESSES = {"claude", "codex", "agy"}
 
@@ -36,13 +35,13 @@ class LabPaths:
         root = root.resolve()
         return cls(
             control_root=root,
-            config_dir=root / "config",
+            config_dir=root,
             worktree=root / "state" / "worktree",
             repository=root / "state" / "repository",
             hooks=root / "state" / "hooks-disabled",
             log_dir=root / "log",
             ledger=root / "log" / "mcp_lab_runs.jsonl",
-            token=root / "api_token",
+            token=root / "eha-mcp-lab-token.config.toml",
         )
 
     def create(self) -> None:
@@ -72,13 +71,13 @@ class LabRuntime:
         paths: LabPaths,
         *,
         tested_harness: str = "claude",
-        seed_data_dir: Path = DEFAULT_SEED_DIR,
+        seed_data_dir: Path | None = None,
         inherited_env: Mapping[str, str] | None = None,
     ) -> None:
         self.source_dir = source_dir.resolve()
         self.paths = paths
         self.tested_harness = tested_harness.strip().lower()
-        self.seed_data_dir = seed_data_dir.resolve()
+        self.seed_data_dir = seed_data_dir.resolve() if seed_data_dir else None
         self.inherited_env = dict(inherited_env or os.environ)
         if self.tested_harness not in SUPPORTED_HARNESSES:
             raise ValueError("tested_harness must be claude, codex, or agy")
@@ -170,6 +169,8 @@ class LabRuntime:
         )
 
     def _seed_configuration(self) -> list[str]:
+        if self.seed_data_dir is None:
+            return []
         seeded: list[str] = []
         for filename in SEED_FILES:
             source = self.seed_data_dir / filename

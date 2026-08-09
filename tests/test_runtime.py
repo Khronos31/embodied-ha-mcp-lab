@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from embodied_ha_mcp_lab.runner import MCPRunner
-from embodied_ha_mcp_lab.runtime import LabPaths, LabRuntime
+from embodied_ha_mcp_lab.runtime import DEFAULT_CONTROL_ROOT, LabPaths, LabRuntime
 from embodied_ha_mcp_lab.state_repository import StateRepository
 
 SOURCE = (
@@ -38,15 +38,37 @@ def test_seed_only_allowlisted_configuration_and_never_resyncs(tmp_path):
         "preferences.json",
         "floorplan_room_graph_draft.json",
     ]
-    assert sorted(path.name for path in paths.config_dir.iterdir()) == [
-        "floorplan_room_graph_draft.json",
-        "preferences.json",
-    ]
+    assert paths.config_dir == paths.control_root
+    assert (paths.control_root / "preferences.json").is_file()
+    assert (paths.control_root / "floorplan_room_graph_draft.json").is_file()
     (seed / "preferences.json").write_text('{"resident":"changed"}')
     assert runtime.initialize() == []
     assert json.loads((paths.config_dir / "preferences.json").read_text()) == {
         "resident": "fixture"
     }
+
+
+def test_default_layout_is_the_host_visible_lab_directory():
+    paths = LabPaths.below()
+    assert DEFAULT_CONTROL_ROOT == Path("/config/embodied-ha-mcp-lab")
+    assert paths.control_root == DEFAULT_CONTROL_ROOT
+    assert paths.config_dir == DEFAULT_CONTROL_ROOT
+    assert paths.worktree == DEFAULT_CONTROL_ROOT / "state" / "worktree"
+    assert paths.repository == DEFAULT_CONTROL_ROOT / "state" / "repository"
+    assert paths.ledger == DEFAULT_CONTROL_ROOT / "log" / "mcp_lab_runs.jsonl"
+    assert paths.token == DEFAULT_CONTROL_ROOT / "eha-mcp-lab-token.config.toml"
+
+
+def test_preferences_changes_are_loaded_by_the_next_fresh_server(tmp_path):
+    paths = LabPaths.below(tmp_path / "lab")
+    runtime = LabRuntime(SOURCE, paths, inherited_env={"PATH": os.environ["PATH"]})
+    runtime.initialize()
+
+    assert "review_camera_history" not in runtime.server("camera").registry_tools
+    (paths.config_dir / "preferences.json").write_text(
+        '{"camera_history_enabled":true}\n', encoding="utf-8"
+    )
+    assert "review_camera_history" in runtime.server("camera").registry_tools
 
 
 def test_registry_uses_real_pinned_config_and_lab_paths(tmp_path):

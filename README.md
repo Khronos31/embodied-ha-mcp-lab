@@ -28,28 +28,33 @@ local Git history.
   repository. Commit messages contain only opaque run IDs.
 - Reset starts a new generation at the fixed empty baseline; old branches and evidence
   remain available locally.
-- Only `preferences.json` and `floorplan_room_graph_draft.json` are copied from this
-  app's own `addon_config` directory on first start. Character, memory, body state, logs,
-  credentials, and harness authentication are never seeded. The resident Home Assistant
-  configuration directory is not mounted into the container.
+- `preferences.json` and `floorplan_room_graph_draft.json` are read directly from the
+  Lab directory on every fresh MCP process. Editing either file takes effect on the next
+  discovery or call without reinstalling the app.
 
-Persistent runtime data is in the app-private `/data/embodied-ha-mcp-lab/` volume:
+Persistent runtime data is in Home Assistant's
+`/config/embodied-ha-mcp-lab/` directory:
 
 ```text
-config/                         Lab-only preferences and room graph
+preferences.json               Lab-only MCP configuration
+floorplan_room_graph_draft.json Lab-only room graph
 state/worktree/                 Current MCP state generation
 state/repository/               Separate local Git object database
 log/mcp_lab_runs.jsonl          Raw evidence ledger (0600)
+eha-mcp-lab-token.config.toml   Direct API bearer token (0600)
 ```
 
 The ledger retains up to 30 days or 100 MiB, whichever boundary is reached first.
 
-Before the first manual start, optional seed files can be placed in Home Assistant's
-`/addon_configs/<repository-id>_embodied_ha_mcp_lab/` folder. Supervisor mounts that
-Lab-owned folder at `/config` inside this app; it is not the resident `/config`. The same
-folder contains the generated direct API token as
-`eha-mcp-lab-token.config.toml` (mode `0600`). EHA's `files/read_file` policy denies that
-filename.
+Before the first manual start, place `preferences.json` and
+`floorplan_room_graph_draft.json` in that directory. Missing files are initialized with
+empty defaults. The generated direct API token is stored beside them with mode `0600`;
+EHA's `files/read_file` policy denies that filename.
+
+Version `0.1.1` no longer reads the former
+`/addon_configs/<repository-id>_embodied_ha_mcp_lab/` directory. Keep that legacy
+directory until the installed canary confirms the new control root; deletion is a
+separate manual operation.
 
 ## UI and internal API
 
@@ -60,7 +65,7 @@ SCS can call the same internal API using the generated token:
 
 ```bash
 read -r EHA_MCP_LAB_TOKEN < \
-  /addon_configs/<repository-id>_embodied_ha_mcp_lab/eha-mcp-lab-token.config.toml
+  /config/embodied-ha-mcp-lab/eha-mcp-lab-token.config.toml
 curl -H "Authorization: Bearer ${EHA_MCP_LAB_TOKEN}" \
   http://ADDON_IP:8099/api/servers
 curl -H "Authorization: Bearer ${EHA_MCP_LAB_TOKEN}" \

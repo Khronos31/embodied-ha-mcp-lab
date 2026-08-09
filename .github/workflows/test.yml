@@ -183,7 +183,9 @@ jobs:
           from pathlib import Path
           from urllib.request import Request, urlopen
 
-          token_path = Path("/config/eha-mcp-lab-token.config.toml")
+          token_path = Path(
+              "/config/embodied-ha-mcp-lab/eha-mcp-lab-token.config.toml"
+          )
           token = token_path.read_text().strip()
 
           def get(path):

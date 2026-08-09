@@ -28,7 +28,7 @@ def test_lab_manifest_uses_an_independent_runtime_release():
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
 
     assert lab["slug"] == "embodied_ha_mcp_lab"
-    assert lab["version"] == "0.1.0"
+    assert lab["version"] == "0.1.1"
     assert contract["version"] == "2.1.14"
     assert re.fullmatch(r"[0-9a-f]{40}", contract["revision"])
     assert contract["repository"] == "Khronos31/embodied-ha"
@@ -37,7 +37,9 @@ def test_lab_manifest_uses_an_independent_runtime_release():
     assert lab["image"] == "ghcr.io/khronos31/embodied-ha-mcp-lab"
     assert "environment" not in lab
     assert lab["ingress_port"] == 8099
-    assert lab["map"] == [{"type": "addon_config", "read_only": False}]
+    assert lab["map"] == [
+        {"type": "homeassistant_config", "read_only": False, "path": "/config"}
+    ]
     assert lab["audio"] is True
     assert "hassio_api" not in lab
     assert lab["homeassistant_api"] is True
@@ -45,7 +47,6 @@ def test_lab_manifest_uses_an_independent_runtime_release():
     assert lab["options"] == {
         "tested_harness": "claude",
         "timeout_seconds": 45,
-        "seed_data_dir": "/config",
     }
     assert not (LAB_DIR / "Dockerfile").exists()
     assert not list(LAB_DIR.glob("*-mcp.py"))
@@ -70,6 +71,19 @@ def test_dockerfile_bakes_source_identity_after_copy():
     assert 'io.hass.type="app"' in dockerfile
     assert "COPY embodied_ha_mcp_lab/ /lab/embodied_ha_mcp_lab/" in dockerfile
     assert 'CMD ["python3", "-m", "embodied_ha_mcp_lab.mcp_lab"]' in dockerfile
+    assert (
+        "EHA_MCP_LAB_AUTH_FILE=/config/embodied-ha-mcp-lab/"
+        "eha-mcp-lab-token.config.toml"
+    ) in dockerfile
+
+
+def test_canary_reads_the_direct_token_from_the_persistent_lab_root():
+    workflow = TEST_WORKFLOW.read_text(encoding="utf-8")
+    assert (
+        '"/config/embodied-ha-mcp-lab/eha-mcp-lab-token.config.toml"'
+        in workflow
+    )
+    assert 'Path("/config/eha-mcp-lab-token.config.toml")' not in workflow
 
 
 def test_docker_context_includes_the_complete_lab_package():

@@ -41,3 +41,14 @@ evidence, and isolates persistent Lab state from every resident.
 
 Each increment must keep every earlier gate green. A failed gate blocks the next
 increment and any publication or installation.
+
+For the `0.1.1` storage migration, the installed canary must additionally verify all of
+the following before it is accepted:
+
+- startup reports `control_root=/config/embodied-ha-mcp-lab`;
+- the host `preferences.json` and room graph match the prepared files;
+- changing `camera_history_enabled` changes the next fresh camera tool discovery, then
+  the original value is restored;
+- state commits, the run ledger, and the direct API token are created below that root;
+- the legacy `/addon_configs/83e16454_embodied_ha_mcp_lab/` directory remains untouched
+  and is documented as unused by `0.1.1`.

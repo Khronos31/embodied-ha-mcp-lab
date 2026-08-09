@@ -53,7 +53,7 @@ RUN python3 /lab/embodied_ha_mcp_lab/source_identity.py write \
 
 ENV EHA_MCP_LAB_SOURCE_DIR=/app \
     EHA_MCP_LAB_BUILD_IDENTITY=/lab/.eha-source-identity.json \
-    EHA_MCP_LAB_AUTH_FILE=/config/eha-mcp-lab-token.config.toml \
+    EHA_MCP_LAB_AUTH_FILE=/config/embodied-ha-mcp-lab/eha-mcp-lab-token.config.toml \
     PYTHONPATH=/lab
 
 CMD ["python3", "-m", "embodied_ha_mcp_lab.mcp_lab"]
