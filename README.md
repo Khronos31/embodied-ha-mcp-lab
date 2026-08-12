@@ -1,5 +1,11 @@
 # Embodied HA MCP Lab
 
+## Installation
+
+Add [`https://github.com/Khronos31/embodied-ha-addons`](https://github.com/Khronos31/embodied-ha-addons)
+to the Home Assistant add-on store, then install **Embodied HA MCP Lab** from it. This repository holds
+the source and is not itself an add-on repository.
+
 A separate, experimental Home Assistant app for exercising the real MCP servers
 shipped by [Embodied HA](https://github.com/Khronos31/embodied-ha), without starting a
 resident daemon or an LLM.
